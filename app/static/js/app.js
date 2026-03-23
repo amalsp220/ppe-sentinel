@@ -30,7 +30,7 @@ function setLoading(message, busy = false) {
 function updateFilePreview() {
   const file = fileInput.files?.[0];
   filePreview.textContent = file
-    ? `${file.name} • ${(file.size / (1024 * 1024)).toFixed(2)} MB`
+    ? `${file.name} - ${(file.size / (1024 * 1024)).toFixed(2)} MB`
     : "No file selected yet.";
 }
 
@@ -99,7 +99,7 @@ function renderResults(payload) {
 
   summaryGrid.innerHTML = "";
   summaryGrid.appendChild(createSummaryCard("Workers", payload.site_summary.total_workers));
-  summaryGrid.appendChild(createSummaryCard("Compliance", `${payload.site_summary.compliance_rate}%`));
+  summaryGrid.appendChild(createSummaryCard("Compliance Rate", `${payload.site_summary.compliance_rate}%`));
   summaryGrid.appendChild(createSummaryCard("Non-Compliant", payload.site_summary.non_compliant_workers));
   summaryGrid.appendChild(createSummaryCard("Policy", payload.required_items.join(", ")));
 

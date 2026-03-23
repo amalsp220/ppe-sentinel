@@ -1,11 +1,54 @@
 from __future__ import annotations
 
 import json
+import re
 
 from openai import OpenAI
 
 from app.core.config import settings
 from app.models.schemas import ExecutiveReport, SiteSummary, WorkerCompliance
+
+
+def clean_report_text(value: str) -> str:
+    cleaned = value.replace("`", "")
+    cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"^#{1,6}\s*", "", cleaned.strip())
+    cleaned = re.sub(r"^\d+\.\s*", "", cleaned)
+    cleaned = re.sub(r"^[-*]\s*", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" -:")
+
+
+def parse_openai_report(text: str) -> tuple[str, str, list[str]]:
+    lines = [clean_report_text(line) for line in text.splitlines() if clean_report_text(line)]
+    if not lines:
+        return "AI Safety Summary", "", []
+
+    title = lines[0][:80]
+    summary_candidates: list[str] = []
+    actions: list[str] = []
+
+    for line in lines[1:]:
+        lowered = line.lower()
+        if lowered.startswith("action item") or lowered.startswith("action items"):
+            continue
+        if len(actions) < 3 and (
+            lowered.startswith("action")
+            or lowered.startswith("immediate")
+            or lowered.startswith("supervisor")
+            or lowered.startswith("re-scan")
+            or lowered.startswith("review")
+            or lowered.startswith("halt")
+        ):
+            actions.append(clean_report_text(re.sub(r"^action\s*:?\s*", "", line, flags=re.IGNORECASE)))
+            continue
+        if not summary_candidates:
+            summary_candidates.append(line)
+        elif len(actions) < 3:
+            actions.append(line)
+
+    summary = summary_candidates[0] if summary_candidates else "Operational safety summary generated."
+    return title, summary, actions[:3]
 
 
 def build_rule_based_report(
@@ -67,8 +110,9 @@ def build_openai_report(
                         {
                             "type": "input_text",
                             "text": (
-                                "You are an industrial safety analyst. Write a concise executive summary plus 3 "
-                                "action items. Be specific, operational, and suitable for an enterprise dashboard."
+                                "You are an industrial safety analyst. Respond in plain text only, with no markdown. "
+                                "Format exactly as: first line title, second line one-sentence summary, then three "
+                                "action lines. Be specific, operational, and suitable for an enterprise dashboard."
                             ),
                         }
                     ],
@@ -86,10 +130,7 @@ def build_openai_report(
     if not text:
         return build_rule_based_report(filename, media_type, site_summary, workers, required_items)
 
-    lines = [line.strip("- ").strip() for line in text.splitlines() if line.strip()]
-    title = lines[0][:80] if lines else "AI Safety Summary"
-    summary = lines[1] if len(lines) > 1 else text
-    actions = [line for line in lines[2:5]]
+    title, summary, actions = parse_openai_report(text)
     if not actions:
         actions = [
             "Review the flagged non-compliant workers and trigger a spot correction.",
