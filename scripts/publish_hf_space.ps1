@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SpaceRepoUrl,
     [string]$OutputDir = "dist/huggingface-space",
+    [string]$RepoDir = "dist/huggingface-space-repo",
     [string]$CommitMessage = "chore: publish PPE Sentinel Space",
     [switch]$Push
 )
@@ -13,16 +14,24 @@ Set-Location $root
 
 & (Join-Path $PSScriptRoot "export_hf_space.ps1") -OutputDir $OutputDir
 
-$spacePath = Join-Path $root $OutputDir
-Push-Location $spacePath
+$bundlePath = Join-Path $root $OutputDir
+$repoPath = Join-Path $root $RepoDir
 
-if (-not (Test-Path ".git")) {
-    git init -b main | Out-Null
+if (-not (Test-Path $repoPath)) {
+    git clone $SpaceRepoUrl $repoPath | Out-Null
+} elseif (-not (Test-Path (Join-Path $repoPath ".git"))) {
+    throw "RepoDir exists but is not a git repository: $repoPath"
 }
 
-$remoteExists = git remote | Select-String -SimpleMatch "origin"
-if (-not $remoteExists) {
-    git remote add origin $SpaceRepoUrl
+Push-Location $repoPath
+git fetch origin main | Out-Null
+git checkout main | Out-Null
+git pull --ff-only origin main | Out-Null
+
+Get-ChildItem -Force . | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
+
+foreach ($item in Get-ChildItem -Force $bundlePath) {
+    Copy-Item -Recurse -Force $item.FullName .
 }
 
 git add .
@@ -35,8 +44,8 @@ if ($hasChanges) {
 if ($Push) {
     git push -u origin main
 } else {
-    Write-Host "Space bundle is ready at $spacePath"
-    Write-Host "Run 'git -C ""$spacePath"" push -u origin main' when you're ready to publish."
+    Write-Host "Space bundle is synced into $repoPath"
+    Write-Host "Run 'git -C ""$repoPath"" push -u origin main' when you're ready to publish."
 }
 
 Pop-Location
