@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ app_name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">PS</span>
+        <div>
+          <p class="eyebrow">Safety Intelligence</p>
+          <h1>{{ app_name }}</h1>
+        </div>
+      </div>
+      <div class="status-chip {{ 'enabled' if openai_enabled else 'muted' }}">
+        {{ 'OpenAI Reports Ready' if openai_enabled else 'Rule-Based Reports' }}
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <section class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">Enterprise PPE Monitoring</p>
+          <h2>{{ tagline }}</h2>
+          <p class="lead">
+            Upload photos or short videos from phones, CCTV exports, or site audits. The app detects workers,
+            scores PPE compliance, and generates a management-ready summary.
+          </p>
+          <div class="hero-pills">
+            <span>Desktop + mobile ready</span>
+            <span>Images + short videos</span>
+            <span>Helmet, vest, mask, gloves</span>
+          </div>
+        </div>
+        <div class="hero-metrics">
+          <div>
+            <span>Detector</span>
+            <strong>Zero-Shot Grounding DINO</strong>
+          </div>
+          <div>
+            <span>Default Policy</span>
+            <strong>{{ default_required_items | join(', ') }}</strong>
+          </div>
+          <div>
+            <span>Designed For</span>
+            <strong>Construction and industrial teams</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <section class="uploader card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Upload</p>
+              <h3>Scan a site image or video</h3>
+            </div>
+            <button id="demoPolicyButton" class="ghost-button" type="button">Use Standard Policy</button>
+          </div>
+
+          <form id="analyzeForm" class="upload-form">
+            <label class="dropzone" for="fileInput" id="dropzone">
+              <input id="fileInput" name="file" type="file" accept="image/*,video/*" required />
+              <span class="drop-icon">Inspect</span>
+              <strong>Drop media here or tap to browse</strong>
+              <small>Supports JPG, PNG, WEBP, MP4, MOV, AVI, MKV, WEBM</small>
+            </label>
+
+            <div class="form-grid">
+              <label>
+                <span>Required PPE policy</span>
+                <input
+                  id="requiredItems"
+                  name="required_items"
+                  type="text"
+                  value="{{ default_required_items | join(',') }}"
+                  placeholder="helmet,vest"
+                />
+              </label>
+              <label class="toggle-row">
+                <span>Generate executive summary</span>
+                <input id="generateAiSummary" name="generate_ai_summary" type="checkbox" checked />
+              </label>
+            </div>
+
+            <div class="file-preview" id="filePreview">No file selected yet.</div>
+            <button class="primary-button" id="submitButton" type="submit">Analyze PPE Compliance</button>
+          </form>
+        </section>
+
+        <section class="results card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h3>Operational command view</h3>
+            </div>
+            <div id="loadingState" class="loading-state">Waiting for upload</div>
+          </div>
+
+          <div id="emptyState" class="empty-state">
+            <h4>Ready for the first scan</h4>
+            <p>The dashboard will populate with worker cards, compliance metrics, evidence snapshots, and the report.</p>
+          </div>
+
+          <div id="resultsContent" class="results-content hidden">
+            <div class="summary-grid" id="summaryGrid"></div>
+            <div class="media-panel">
+              <img id="annotatedImage" alt="Annotated result" />
+            </div>
+            <div class="report-panel">
+              <div class="report-header">
+                <div>
+                  <p class="eyebrow">Executive Summary</p>
+                  <h4 id="reportTitle"></h4>
+                </div>
+                <button id="downloadJsonButton" class="ghost-button" type="button">Download JSON</button>
+              </div>
+              <p id="reportSummary" class="report-summary"></p>
+              <div id="reportActions" class="action-list"></div>
+            </div>
+            <div>
+              <div class="section-head minor">
+                <div>
+                  <p class="eyebrow">Workers</p>
+                  <h4>Compliance roster</h4>
+                </div>
+              </div>
+              <div id="workerList" class="worker-list"></div>
+            </div>
+            <div id="timelineSection" class="timeline-section hidden">
+              <div class="section-head minor">
+                <div>
+                  <p class="eyebrow">Video Timeline</p>
+                  <h4>Sampled compliance frames</h4>
+                </div>
+              </div>
+              <div id="timelineGrid" class="timeline-grid"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
