@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import cv2
+import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageOps
 from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
@@ -47,6 +48,35 @@ COLOR_MAP = {
     "mask": "#06B6D4",
     "gloves": "#EF4444",
 }
+
+
+def clip_box_to_image(box: BoundingBox, image: Image.Image) -> tuple[int, int, int, int]:
+    width, height = image.size
+    xmin = max(0, min(int(box.xmin), width - 1))
+    ymin = max(0, min(int(box.ymin), height - 1))
+    xmax = max(xmin + 1, min(int(box.xmax), width))
+    ymax = max(ymin + 1, min(int(box.ymax), height))
+    return xmin, ymin, xmax, ymax
+
+
+def has_high_visibility_signal(image: Image.Image, box: BoundingBox) -> bool:
+    xmin, ymin, xmax, ymax = clip_box_to_image(box, image)
+    crop = image.crop((xmin, ymin, xmax, ymax))
+    if crop.width < 8 or crop.height < 8:
+        return False
+
+    hsv = cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2HSV)
+    hue = hsv[:, :, 0]
+    sat = hsv[:, :, 1]
+    val = hsv[:, :, 2]
+
+    yellow = (hue >= 18) & (hue <= 42) & (sat >= 80) & (val >= 100)
+    orange = (hue >= 5) & (hue <= 18) & (sat >= 90) & (val >= 90)
+    reflective = (sat <= 45) & (val >= 180)
+
+    hi_vis_ratio = float((yellow | orange).mean())
+    reflective_ratio = float(reflective.mean())
+    return hi_vis_ratio >= 0.12 or (hi_vis_ratio >= 0.06 and reflective_ratio >= 0.03)
 
 
 class PpeDetector:
@@ -90,11 +120,14 @@ class PpeDetector:
                 if confidence < MIN_SCORE_BY_LABEL.get(canonical_label, settings.detection_threshold):
                     continue
                 xmin, ymin, xmax, ymax = [float(value) for value in box.tolist()]
+                candidate_box = BoundingBox(xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax)
+                if canonical_label == "vest" and not has_high_visibility_signal(prepared, candidate_box):
+                    continue
                 detections.append(
                     Detection(
                         label=canonical_label,
                         score=confidence,
-                        box=BoundingBox(xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax),
+                        box=candidate_box,
                     )
                 )
         detections = class_aware_nms(detections)
