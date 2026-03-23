@@ -64,7 +64,7 @@ class PpeDetector:
         results = self._processor.post_process_grounded_object_detection(
             outputs,
             inputs["input_ids"],
-            box_threshold=settings.detection_threshold,
+            threshold=settings.detection_threshold,
             text_threshold=0.2,
             target_sizes=[prepared.size[::-1]],
         )
