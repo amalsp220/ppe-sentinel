@@ -13,7 +13,7 @@ from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
 from app.core.config import settings
 from app.models.schemas import BoundingBox, Detection, FrameAnalysis, MediaAsset, SiteSummary, WorkerCompliance
-from app.services.compliance import class_aware_nms, evaluate_site, frame_risk_level, normalize_label
+from app.services.compliance import class_aware_nms, evaluate_site, frame_risk_level, keep_best_person_attached_items, normalize_label
 from app.services.storage import save_image
 
 
@@ -22,12 +22,23 @@ TEXT_QUERIES = [
     "helmet",
     "hard hat",
     "safety helmet",
+    "vest",
     "safety vest",
+    "reflective safety vest",
     "reflective vest",
     "high visibility vest",
+    "hi vis vest",
     "face mask",
     "gloves",
 ]
+
+MIN_SCORE_BY_LABEL = {
+    "person": 0.28,
+    "helmet": 0.36,
+    "vest": 0.18,
+    "mask": 0.24,
+    "gloves": 0.22,
+}
 
 COLOR_MAP = {
     "person": "#8B5CF6",
@@ -75,15 +86,19 @@ class PpeDetector:
                 canonical_label = normalize_label(str(label))
                 if canonical_label not in COLOR_MAP:
                     continue
+                confidence = round(float(score), 4)
+                if confidence < MIN_SCORE_BY_LABEL.get(canonical_label, settings.detection_threshold):
+                    continue
                 xmin, ymin, xmax, ymax = [float(value) for value in box.tolist()]
                 detections.append(
                     Detection(
                         label=canonical_label,
-                        score=round(float(score), 4),
+                        score=confidence,
                         box=BoundingBox(xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax),
                     )
                 )
-        return class_aware_nms(detections)
+        detections = class_aware_nms(detections)
+        return keep_best_person_attached_items(detections)
 
 
 detector = PpeDetector()

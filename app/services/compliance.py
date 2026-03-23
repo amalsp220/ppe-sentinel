@@ -27,10 +27,24 @@ LABEL_ALIASES = {
     "safety gloves": "gloves",
 }
 
+SUBSTRING_LABEL_RULES = (
+    ("helmet", ("helmet", "hard hat", "hardhat")),
+    ("vest", ("vest", "hi vis", "hi-vis", "high visibility", "reflective jacket", "safety jacket")),
+    ("mask", ("mask", "respirator")),
+    ("gloves", ("glove",)),
+    ("person", ("person", "worker")),
+)
+
 
 def normalize_label(label: str) -> str:
     cleaned = re.sub(r"\s+", " ", label.strip().lower())
-    return LABEL_ALIASES.get(cleaned, cleaned)
+    exact_match = LABEL_ALIASES.get(cleaned)
+    if exact_match:
+        return exact_match
+    for canonical, keywords in SUBSTRING_LABEL_RULES:
+        if any(keyword in cleaned for keyword in keywords):
+            return canonical
+    return cleaned
 
 
 def center_of(box: BoundingBox) -> tuple[float, float]:
@@ -58,21 +72,65 @@ def iou(box_a: BoundingBox, box_b: BoundingBox) -> float:
 def item_matches_person(item: Detection, person: Detection) -> bool:
     ix, iy = center_of(item.box)
     inside_box = person.box.xmin <= ix <= person.box.xmax and person.box.ymin <= iy <= person.box.ymax
-    if not inside_box and intersection_area(item.box, person.box) <= 0:
+    overlap = intersection_area(item.box, person.box)
+    item_area = max(item.box.width * item.box.height, 1.0)
+    overlap_ratio = overlap / item_area
+
+    if not inside_box and overlap <= 0:
+        return False
+    if overlap_ratio < 0.45:
         return False
 
     height = max(person.box.height, 1.0)
+    width = max(person.box.width, 1.0)
     rel_y = (iy - person.box.ymin) / height
+    rel_x = (ix - person.box.xmin) / width
+    width_ratio = item.box.width / width
+    height_ratio = item.box.height / height
 
     if item.label == "helmet":
-        return rel_y <= 0.42
+        return rel_y <= 0.3 and 0.18 <= rel_x <= 0.82 and 0.08 <= width_ratio <= 0.58 and 0.04 <= height_ratio <= 0.3
     if item.label == "mask":
-        return rel_y <= 0.5
+        return rel_y <= 0.48 and 0.25 <= rel_x <= 0.75 and 0.05 <= width_ratio <= 0.45 and 0.04 <= height_ratio <= 0.22
     if item.label == "vest":
-        return 0.18 <= rel_y <= 0.88
+        return 0.2 <= rel_y <= 0.72 and 0.12 <= rel_x <= 0.88 and 0.2 <= width_ratio <= 0.95 and 0.18 <= height_ratio <= 0.85
     if item.label == "gloves":
-        return 0.2 <= rel_y <= 1.02
+        return 0.24 <= rel_y <= 1.02 and 0.03 <= width_ratio <= 0.42 and 0.03 <= height_ratio <= 0.22
     return True
+
+
+def keep_best_person_attached_items(detections: list[Detection]) -> list[Detection]:
+    people = [item for item in detections if item.label == "person"]
+    items = [item for item in detections if item.label != "person"]
+    if not people:
+        return detections
+
+    kept: list[Detection] = list(people)
+    selected_keys: set[tuple[str, int, int, int, int]] = set()
+
+    for person in people:
+        best_by_label: dict[str, Detection] = {}
+        for item in items:
+            if not item_matches_person(item, person):
+                continue
+            current = best_by_label.get(item.label)
+            if current is None or item.score > current.score:
+                best_by_label[item.label] = item
+
+        for item in best_by_label.values():
+            key = (
+                item.label,
+                round(item.box.xmin),
+                round(item.box.ymin),
+                round(item.box.xmax),
+                round(item.box.ymax),
+            )
+            if key in selected_keys:
+                continue
+            kept.append(item)
+            selected_keys.add(key)
+
+    return kept
 
 
 def class_aware_nms(detections: list[Detection], threshold: float = 0.45) -> list[Detection]:
