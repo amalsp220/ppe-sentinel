@@ -66,17 +66,30 @@ def has_high_visibility_signal(image: Image.Image, box: BoundingBox) -> bool:
         return False
 
     hsv = cv2.cvtColor(np.array(crop), cv2.COLOR_RGB2HSV)
-    hue = hsv[:, :, 0]
-    sat = hsv[:, :, 1]
-    val = hsv[:, :, 2]
+    torso_hsv = hsv[int(hsv.shape[0] * 0.15) : int(hsv.shape[0] * 0.9), int(hsv.shape[1] * 0.15) : int(hsv.shape[1] * 0.85)]
+    if torso_hsv.size == 0:
+        torso_hsv = hsv
+    hue = torso_hsv[:, :, 0]
+    sat = torso_hsv[:, :, 1]
+    val = torso_hsv[:, :, 2]
 
     yellow = (hue >= 18) & (hue <= 42) & (sat >= 80) & (val >= 100)
     orange = (hue >= 5) & (hue <= 18) & (sat >= 90) & (val >= 90)
     reflective = (sat <= 45) & (val >= 180)
 
-    hi_vis_ratio = float((yellow | orange).mean())
+    hi_vis_mask = (yellow | orange).astype(np.uint8)
+    component_count, _, stats, _ = cv2.connectedComponentsWithStats(hi_vis_mask, connectivity=8)
+    largest_component_ratio = 0.0
+    if component_count > 1:
+        largest_component_ratio = float(stats[1:, cv2.CC_STAT_AREA].max() / hi_vis_mask.size)
+
+    hi_vis_ratio = float(hi_vis_mask.mean())
     reflective_ratio = float(reflective.mean())
-    return hi_vis_ratio >= 0.12 or (hi_vis_ratio >= 0.06 and reflective_ratio >= 0.03)
+    return (
+        hi_vis_ratio >= 0.18
+        or largest_component_ratio >= 0.12
+        or (hi_vis_ratio >= 0.1 and reflective_ratio >= 0.04)
+    )
 
 
 class PpeDetector:
